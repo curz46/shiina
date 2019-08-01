@@ -11,8 +11,11 @@ defmodule Shiina.Config do
       Agent.get(__MODULE__, fn x -> x[guild_id] || :undefined end)
     end
 
+    require Logger
+
     def update(guild_id, config) do
       Agent.update(__MODULE__, &Map.put(&1, guild_id, config))
+      Logger.debug "Recached"
     end
 
   end
