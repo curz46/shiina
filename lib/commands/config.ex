@@ -9,18 +9,19 @@ defmodule Shiina.CommandConfig do
   alias Shiina.Helpers
 
   Cogs.group("config")
-  def format_document(document) do
-    document = Poison.encode!(document, pretty: true)
-    "```json\n#{document}```"
-  end
-
   def start_link() do
     Agent.start_link(fn -> %{} end, name: __MODULE__)
   end
 
+  def with_prefix(user_id, at) do
+    [get_prefix(user_id), at]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(".")
+  end
+
   def get_prefix(user_id) do
     state = Agent.get(__MODULE__, &(&1))
-    Map.get(state, user_id, "")
+    Map.get(state, user_id, nil)
   end
 
   def set_prefix(user_id, prefix) do
@@ -41,64 +42,63 @@ defmodule Shiina.CommandConfig do
     Cogs.say "Set configuration prefix to `#{value}`."
   end
 
-  Cogs.def get do
-    {:ok, guild_id} = Cache.guild_id(message.channel_id)
-    prefix = get_prefix(message.author.id)
-
-    case prefix do
-      "" ->
-        Shiina.Config.get(guild_id)
-        |> (&translate_document(guild_id, &1)).()
-        |> format_document()
-        |> Cogs.say
-      _  ->
-        Cogs.say "Using prefix `#{prefix}`..."
-        do_get(message, prefix)
-    end
-  end
-
-  Cogs.def get(path) do
-    prefix = get_prefix(message.author.id)
-    case prefix do
-      "" -> do_get(message, path)
-      _  ->
-        Cogs.say "Using prefix `#{prefix}`..."
-        path = if prefix == "", do: path, else: prefix <> "." <> path
-        do_get(message, path)
-    end
-  end
-
-  def do_get(message, path) do
+  Cogs.set_parser(:get, &Helpers.parse_quoted/1)
+  Cogs.def get(at \\ nil, max_depth \\ 3) do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
 
-    value = Shiina.Config.get(guild_id, path)
-    case value do
-      nil ->
-        Cogs.say "Value: `undefined`"
-      v when is_list(v) ->
-        Cogs.say "Value: ```json\n" <> path <> " = " <> (translate_document(guild_id, value) |> format_list()) <> "\n```"
-      _ ->
-        Cogs.say "Value: #{translate_document(guild_id, value) |> format_document}"
-    end
+    path = with_prefix(message.author.id, at)
+
+    result =
+      case Shiina.Config.get(guild_id, path) do
+        nil               -> ":nil"
+        x when is_list(x) -> translate_document(guild_id, x) |> format_list()
+        x = %{}           -> limit_depth(x, max_depth) |> format_document()
+        x                 -> format_document(x)
+      end
+
+    chunk_fun =
+      fn elem, acc ->
+        result = acc <> "\n" <> elem
+        if String.length(result) >= 1900 do
+          {:cont, acc, elem}
+        else
+          {:cont, result}
+        end
+      end
+
+    chunk_after =
+      fn acc ->
+        case acc do
+          "" -> {:cont, acc}
+          _  -> {:cont, acc, acc}
+        end
+      end
+
+    pages =
+      result
+      |> String.split("\n")
+      |> Enum.chunk_while("", chunk_fun, chunk_after)
+
+    Enum.each(pages, fn page ->
+      Cogs.say "```json\n#{page}\n```"
+    end)
   end
 
   Cogs.set_parser(:set, &Helpers.parse_quoted/1)
-  Cogs.def set(path, "list") do
+  Cogs.def set(at, "list") do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
 
-    prefix = get_prefix(message.author.id)
-    path = if prefix == "", do: path, else: prefix <> "." <> path
+    path = with_prefix(message.author.id, at)
 
     value = []
     :ok = Shiina.Config.set(guild_id, path, value)
     :ok = recache_config(guild_id)
     Cogs.say "Set value at path `#{path}` to `[]`."
   end
-  Cogs.def set(path, type, value) do
+  Cogs.def set(at, type, value) do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
 
-    prefix = get_prefix(message.author.id)
-    path = if prefix == "", do: path, else: prefix <> "." <> path
+    path = with_prefix(message.author.id, at)
 
     case parse_value(guild_id, type, value) do
       {:ok, value} ->
@@ -110,11 +110,10 @@ defmodule Shiina.CommandConfig do
     end
   end
 
-  Cogs.def unset(path) do
+  Cogs.def unset(at) do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
 
-    prefix = get_prefix(message.author.id)
-    path = if prefix == "", do: path, else: prefix <> "." <> path
+    path = with_prefix(message.author.id, at)
 
     :ok = Shiina.Config.unset(guild_id, path)
     :ok = recache_config(guild_id)
@@ -122,12 +121,11 @@ defmodule Shiina.CommandConfig do
   end
 
   Cogs.set_parser(:put, &Helpers.parse_quoted/1)
-  Cogs.def put(path, type, value) do
+  Cogs.def put(at, type, value) do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
     {:ok, value} = parse_value(guild_id, type, value)
 
-    prefix = get_prefix(message.author.id)
-    path = if prefix == "", do: path, else: prefix <> "." <> path
+    path = with_prefix(message.author.id, at)
 
     list = Shiina.Config.get(guild_id, path)
     case list do
@@ -142,12 +140,11 @@ defmodule Shiina.CommandConfig do
   end
 
   Cogs.set_parser(:insert, &Helpers.parse_quoted/1)
-  Cogs.def insert(path, index, type, value) do
+  Cogs.def insert(at, index, type, value) do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
     {:ok, value} = parse_value(guild_id, type, value)
 
-    prefix = get_prefix(message.author.id)
-    path = if prefix == "", do: path, else: prefix <> "." <> path
+    path = with_prefix(message.author.id, at)
 
     list = Shiina.Config.get(guild_id, path)
     case list do
@@ -161,11 +158,10 @@ defmodule Shiina.CommandConfig do
     end
   end
 
-  Cogs.def pop(path, index) do
+  Cogs.def pop(at, index) do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
 
-    prefix = get_prefix(message.author.id)
-    path = if prefix == "", do: path, else: prefix <> "." <> path
+    path = with_prefix(message.author.id, at)
 
     {index, _} = Integer.parse(index)
 
@@ -197,6 +193,10 @@ defmodule Shiina.CommandConfig do
 
     :ok = recache_config(guild_id)
     Cogs.say "Updated cache"
+  end
+
+  defp format_document(document) do
+    Poison.encode!(document, pretty: true)
   end
 
   defp format_list(list) when is_list(list) and Kernel.length(list) == 0 do
@@ -281,6 +281,23 @@ defmodule Shiina.CommandConfig do
 
   defp translate_document(_guild_id, value) do
     value
+  end
+
+  defp limit_depth(map, limit, depth \\ 0)
+
+  defp limit_depth(_map, limit, depth) when limit == depth do
+    "%{...}"
+  end
+
+  defp limit_depth(map, limit, depth) do
+    result =
+      for {key, value} <- map do
+        case value do
+          %{} -> {key, limit_depth(value, limit, depth + 1)}
+          _   -> {key, value}
+        end
+      end
+      result |> Enum.into(%{})
   end
 
 end

@@ -371,9 +371,9 @@ defmodule Shiina.Guardian.Predicate do
     allow = Permissions.to_list(overwrite.allow)
     deny  = Permissions.to_list(overwrite.deny)
 
-    permissions = %{}
-    permissions = Enum.reduce(allow, permissions, fn (perm, acc) -> Map.put(acc, perm, true) end)
-    permissions = Enum.reduce(deny, permissions, fn (perm, acc) -> Map.put(acc, perm, false) end)
+    permissions  = %{}
+    permissions  = Enum.reduce(allow, permissions, fn (perm, acc) -> Map.put(acc, perm, true) end)
+    _permissions = Enum.reduce(deny, permissions, fn (perm, acc) -> Map.put(acc, perm, false) end)
   end
 
   @spec category_roles(binary, binary) :: [any]

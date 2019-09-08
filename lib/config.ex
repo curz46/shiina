@@ -20,7 +20,15 @@ defmodule Shiina.Config do
 
   end
 
+  # def get(guild) do
+  #   get_document(guild)
+  # end
+
   def get(guild) do
+    get(guild, "")
+  end
+
+  def get(guild, "") do
     get_document(guild)
   end
 
