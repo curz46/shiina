@@ -6,6 +6,7 @@ defmodule Shiina.CommandConfig do
   alias Alchemy.Client
   alias Alchemy.Cache
 
+  alias Shiina.Config
   alias Shiina.Helpers
 
   Cogs.group("config")
@@ -32,6 +33,24 @@ defmodule Shiina.CommandConfig do
     Agent.update(__MODULE__, fn state -> Map.delete(state, user_id) end)
   end
 
+  Cogs.def help do
+    description =
+      """
+      `s+config prefix [path]` Resolve all paths given with this path as the prefix. To remove the prefix, don't specify a path.\n
+      `s+config get [path \\ ""] [max_depth \\ 3]` Get the value at the given path.\n
+      `s+config set <path> list` Create a list at the given path.\n
+      `s+config set <path> integer|string|boolean|channel|role|user <value>` Update the value at the given path.\n
+      `s+config unset <path>` Unset the value at the given path.\n
+      `s+config put <path> integer|string|boolean|channel|role|user <value>` Add a value to the given path, assuming it is a list.\n
+      `s+config insert <path> <index> integer|string|boolean|channel|role|user <value>` Insert a value to the given path at a particular index, assuming it is a list.\n
+      `s+config pop <path> <index>` Remove the value from the given path at a particular index, assuming it is a list.\n
+      `s+config reset` Reset the configuration, restoring it to an empty document.\n
+      `s+config recache` Recache the configuration (unnecessary).
+      """
+    %{channel_id: channel_id} = message
+    Client.send_message(channel_id, "", embed: %{description: description})
+  end
+
   Cogs.def prefix do
     unset_prefix(message.author.id)
     Cogs.say "Unset configuration prefix."
@@ -43,17 +62,21 @@ defmodule Shiina.CommandConfig do
   end
 
   Cogs.set_parser(:get, &Helpers.parse_quoted/1)
-  Cogs.def get(at \\ nil, max_depth \\ 3) do
+  Cogs.def get(at \\ nil, max_depth \\ 3, mode \\ "resolve") do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
 
     path = with_prefix(message.author.id, at)
 
     result =
-      case Shiina.Config.get(guild_id, path) do
+      case Config.get(guild_id, path) do
         nil               -> ":nil"
-        x when is_list(x) -> translate_document(guild_id, x) |> format_list()
-        x = %{}           -> limit_depth(x, max_depth) |> format_document()
-        x                 -> format_document(x)
+        x when is_list(x) ->
+          case mode do
+            "raw"     -> format_list(x)
+            "resolve" -> translate_document(guild_id, x) |> format_list()
+          end
+        x = %{} -> limit_depth(x, max_depth) |> format_document()
+        x       -> format_document(x)
       end
 
     chunk_fun =
@@ -74,6 +97,8 @@ defmodule Shiina.CommandConfig do
         end
       end
 
+
+
     pages =
       result
       |> String.split("\n")
@@ -91,7 +116,7 @@ defmodule Shiina.CommandConfig do
     path = with_prefix(message.author.id, at)
 
     value = []
-    :ok = Shiina.Config.set(guild_id, path, value)
+    :ok = Config.set(guild_id, path, value)
     :ok = recache_config(guild_id)
     Cogs.say "Set value at path `#{path}` to `[]`."
   end
@@ -102,7 +127,7 @@ defmodule Shiina.CommandConfig do
 
     case parse_value(guild_id, type, value) do
       {:ok, value} ->
-        :ok = Shiina.Config.set(guild_id, path, value)
+        :ok = Config.set(guild_id, path, value)
         :ok = recache_config(guild_id)
         Cogs.say "Set value at path `#{path}` to `#{value}`."
       {:error, reason} ->
@@ -115,7 +140,7 @@ defmodule Shiina.CommandConfig do
 
     path = with_prefix(message.author.id, at)
 
-    :ok = Shiina.Config.unset(guild_id, path)
+    :ok = Config.unset(guild_id, path)
     :ok = recache_config(guild_id)
     Cogs.say "Unset value at path `#{path}`."
   end
@@ -127,11 +152,11 @@ defmodule Shiina.CommandConfig do
 
     path = with_prefix(message.author.id, at)
 
-    list = Shiina.Config.get(guild_id, path)
+    list = Config.get(guild_id, path)
     case list do
       x when is_list(x) ->
         list = [value | list]
-        Shiina.Config.set(guild_id, path, list)
+        Config.set(guild_id, path, list)
         Cogs.say "Added value `#{value}` to list at path `#{path}`."
         :ok = recache_config(guild_id)
       _ ->
@@ -146,11 +171,11 @@ defmodule Shiina.CommandConfig do
 
     path = with_prefix(message.author.id, at)
 
-    list = Shiina.Config.get(guild_id, path)
+    list = Config.get(guild_id, path)
     case list do
       x when is_list(x) ->
         list = List.insert_at(list, index, value)
-        Shiina.Config.set(guild_id, path, list)
+        Config.set(guild_id, path, list)
         :ok = recache_config(guild_id)
         Cogs.say "Added value `#{value}` to list at path `#{path}`."
       _ ->
@@ -158,6 +183,7 @@ defmodule Shiina.CommandConfig do
     end
   end
 
+  Cogs.set_parser(:pop, &Helpers.parse_quoted/1)
   Cogs.def pop(at, index) do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
 
@@ -165,11 +191,11 @@ defmodule Shiina.CommandConfig do
 
     {index, _} = Integer.parse(index)
 
-    list = Shiina.Config.get(guild_id, path)
+    list = Config.get(guild_id, path)
     case list do
       x when is_list(x) ->
         {previous, list} = List.pop_at(list, index)
-        Shiina.Config.set(guild_id, path, list)
+        Config.set(guild_id, path, list)
         :ok = recache_config(guild_id)
         case previous do
           nil -> Cogs.say "Popped nothing; that index doesn't exist."
@@ -182,7 +208,7 @@ defmodule Shiina.CommandConfig do
 
   Cogs.def reset do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
-    {:ok, document} = Shiina.Config.reset(guild_id)
+    {:ok, document} = Config.reset(guild_id)
     :ok = recache_config(guild_id)
     Cogs.say "Reset configuration:\n" <> format_document(document)
   end
@@ -193,6 +219,21 @@ defmodule Shiina.CommandConfig do
 
     :ok = recache_config(guild_id)
     Cogs.say "Updated cache"
+  end
+
+  Cogs.def bin(url) do
+    %{channel_id: channel_id} = message
+    {:ok, guild_id} = Cache.guild_id(channel_id)
+
+    parsed =
+      with {:ok, %{body: body}} <- HTTPoison.get(url)
+      do
+        {:ok, Poison.decode!(body)}
+      else
+        err -> err
+      end
+    Config.reset(guild_id, parsed)
+    Cogs.say "Set document to raw content given by URL."
   end
 
   defp format_document(document) do
@@ -215,8 +256,8 @@ defmodule Shiina.CommandConfig do
   end
 
   defp recache_config(guild_id) do
-    config = Shiina.Config.get(guild_id)
-    Shiina.Config.Cache.update(guild_id, config)
+    config = Config.get(guild_id)
+    Config.Cache.update(guild_id, config)
   end
 
   defp parse_value(guild_id, type, value) do

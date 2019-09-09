@@ -22,7 +22,7 @@ defmodule Shiina.MixProject do
 
   def app_list(:dev), do: [:dotenv | app_list()]
   def app_list(_), do: app_list()
-  def app_list, do: [:logger, :alchemy, :edeliver, :poolboy, :mongodb, :gproc, :timex]
+  def app_list, do: [:logger, :alchemy, :edeliver, :poolboy, :mongodb, :gproc, :timex, :httpoison]
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
@@ -38,7 +38,8 @@ defmodule Shiina.MixProject do
       {:dotenv, "~> 3.0.0"},
       {:poison, "~> 4.0.1"},
       {:gproc, "~> 0.5.0"},
-      {:timex, "~> 3.5"}
+      {:timex, "~> 3.5"},
+      {:httpoison, "~> 1.5"}
     ]
   end
 end

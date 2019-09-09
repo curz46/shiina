@@ -58,8 +58,8 @@ defmodule Shiina.Config do
     :ok
   end
 
-  def reset(guild) do
-    new_document = get_filter(guild)
+  def reset(guild, to \\ nil) do
+    new_document = to || get_filter(guild)
     update_document(guild, new_document)
     {:ok, new_document}
   end
