@@ -7,7 +7,6 @@ defmodule Shiina do
   alias Alchemy.Client
 
   def start(_type, _args) do
-
     case System.get_env("TOKEN") do
       nil   -> IO.puts "TOKEN is not defined, cannot start"
       token ->
