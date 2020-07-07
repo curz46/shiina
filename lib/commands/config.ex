@@ -285,7 +285,7 @@ defmodule Shiina.CommandConfig do
           with {:ok, guild} <- Cache.guild(guild_id) do
             guild[:roles]
           else
-            []
+            _ -> []
           end
         case Enum.find(roles, &(String.downcase(&1.name) == value)) do
           nil  -> {:error, "Role does not exist with that name."}

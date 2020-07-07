@@ -182,7 +182,11 @@ defmodule Shiina.Guardian.Predicate do
   # Make sure that the given roles are not mentionable
 
   def test_role_is_mentionable(_guild_id, _rule = %{roles: roles}, role = %Alchemy.Guild.Role{}) when is_list(roles) do
-    not Enum.member?(roles, role.id) or not role.mentionable
+    if Enum.member?(roles, "!") do
+      Enum.member?(roles, role.id) or not role.mentionable
+    else
+      not (Enum.member?(roles, role.id) or Enum.member?(roles, "*")) or not role.mentionable
+    end
   end
 
   def test_role_is_mentionable(guild_id, _rule = %{roles: category_id}, role = %Alchemy.Guild.Role{}) when is_bitstring(category_id) do
@@ -292,7 +296,7 @@ defmodule Shiina.Guardian.Predicate do
                 true  -> Permissions.to_list(overwrite.allow)
                 false -> Permissions.to_list(overwrite.deny)
               end
-
+	    
             Enum.member?(permission_list, permission)
         end
       # Just ignore if improperly configured

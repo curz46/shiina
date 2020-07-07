@@ -22,17 +22,16 @@ defmodule Shiina.MixProject do
 
   def app_list(:dev), do: [:dotenv | app_list()]
   def app_list(_), do: app_list()
-  def app_list, do: [:logger, :alchemy, :edeliver, :poolboy, :mongodb, :gproc, :timex, :httpoison]
+  def app_list, do: [:logger, :alchemy, :poolboy, :mongodb, :gproc, :timex, :httpoison]
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
-      {:edeliver, "~> 1.6.0"},
       {:distillery, "~> 2.0", warn_missing: false},
       # {:alchemy, "~> 0.6.3", hex: :discord_alchemy},
-      {:alchemy, git: "https://github.com/curz46/alchemy.git", branch: "fix/channel-cache"},
+      {:alchemy, git: "https://github.com/curz46/alchemy.git"},
       {:mongodb, "~> 0.5.1"},
       {:poolboy, "~> 1.5.2"},
       {:dotenv, "~> 3.0.0"},
