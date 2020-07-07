@@ -207,7 +207,6 @@ defmodule Shiina.Guardian.Predicate do
   # Make sure that no roles have these permissions
 
   def test_role_has_permissions(_guild_id, _rule = %{roles: roles, blacklist: blacklist}, %Alchemy.Guild.Role{id: role_id, permissions: bitset}) when is_list(roles) do
-    blacklist   = Enum.map(blacklist, &String.to_atom/1)
     permissions = Alchemy.Permissions.to_list(bitset)
 
     targeted = is_targeted(roles, role_id)
@@ -216,6 +215,7 @@ defmodule Shiina.Guardian.Predicate do
         Enum.member?(blacklist, "*") ->
           Enum.empty?(permissions)
         true ->
+          blacklist = Enum.map(blacklist, &String.to_atom/1)
           Enum.all?(permissions, fn perm -> not Enum.member?(blacklist, perm) end)
       end
 
