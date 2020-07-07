@@ -67,7 +67,7 @@ defmodule Shiina.Guardian.Command do
         {timestamp, result} ->
           report = Module.create_report(result)
           {:ok, relative_time} = Timex.from_unix(timestamp) |> Timex.format("{relative}", :relative)
-          Client.send_message(channel_id, "", embed: %{description: report, footer: %Alchemy.Embed.Footer{text: relative_time}})
+          send_message_safe(channel_id, %{description: report, footer: %Alchemy.Embed.Footer{text: relative_time}})
       end
     else
       Cogs.say "Guardian is not running for the current guild."
@@ -108,10 +108,10 @@ defmodule Shiina.Guardian.Command do
     result = Module.evaluate_ruleset(guild_id)
 
     if Enum.empty?(result) do
-      Client.send_message(channel_id, "", embed: %{description: "There are no valid rules to evaluate."})
+      send_message_safe(channel_id, %{description: "There are no valid rules to evaluate."})
     else
       report = Module.create_report(result)
-      Client.send_message(channel_id, "", embed: %{description: report})
+      send_message_safe(channel_id, %{description: report})
     end
   end
 
@@ -215,7 +215,37 @@ defmodule Shiina.Guardian.Command do
         end
       )
       |> Enum.join("\n\n")
-    Client.send_message(channel_id, "", embed: %{description: content})
+    send_message_safe(channel_id, embed: %{description: content})
+  end
+
+  defp send_message_safe(channel_id, embed = %{description: description}) do
+    description
+    |> chunk_on_length(2000)
+    |> Enum.map(fn x -> %{embed | description: x} end)
+    |> Enum.each(fn x -> Client.send_message(channel_id, "", embed: x) end)
+  end
+
+  defp chunk_on_length(string, length) do
+    enumerable = String.split(string, " ")
+    chunked = Enum.chunk_while(
+      enumerable,
+      [],
+      fn (elem, acc) ->
+        joined = acc ++ [elem]
+        new_length =
+          joined
+          |> Enum.join(" ")
+          |> String.length()
+        if new_length > length do
+          {:cont, acc, [elem]}
+        else
+          {:cont, joined}
+        end
+      end,
+      fn acc -> {:cont, acc, []} end
+    )
+    chunked
+    |> Enum.map(fn x -> Enum.join(x, " ") end)
   end
 
   # Cogs.def test(channel_id) do
