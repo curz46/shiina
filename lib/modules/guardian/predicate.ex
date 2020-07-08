@@ -291,13 +291,19 @@ defmodule Shiina.Guardian.Predicate do
         case overwrite do
           nil -> false
           _   ->
-            permission_list =
-              case value do
-                true  -> Permissions.to_list(overwrite.allow)
-                false -> Permissions.to_list(overwrite.deny)
-              end
-	    
-            Enum.member?(permission_list, permission)
+            case value do
+              true  ->
+                Permissions.to_list(overwrite.allow)
+                |> Enum.member?(permission)
+              false ->
+                Permissions.to_list(overwrite.deny)
+                |> Enum.member?(permission)
+              nil ->
+                [Permissions.to_list(overwrite.deny), Permissions.to_list(overwrite.allow)]
+                |> Enum.concat()
+                |> Enum.member?(permission)
+                |> (&not &1).()
+            end
         end
       # Just ignore if improperly configured
       _ -> true
@@ -330,11 +336,13 @@ defmodule Shiina.Guardian.Predicate do
           case value do
             true  -> [permission | allow] |> Enum.uniq()
             false -> List.delete(allow, permission)
+            nil   -> List.delete(allow, permission)
           end
         deny =
           case value do
             true  -> List.delete(deny, permission)
             false -> [permission | deny] |> Enum.uniq()
+            nil   -> List.delete(deny, permission)
           end
         overwrite = %{overwrite | allow: allow, deny: deny}
         [overwrite | rest]
@@ -350,6 +358,7 @@ defmodule Shiina.Guardian.Predicate do
       case value do
         true  -> {[permission], []}
         false -> {[], [permission]}
+        nil   -> {[], []}
       end
 
     [%{type: "role", id: role, allow: allow, deny: deny}]
