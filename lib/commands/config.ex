@@ -97,8 +97,6 @@ defmodule Shiina.CommandConfig do
         end
       end
 
-
-
     pages =
       result
       |> String.split("\n")
@@ -119,6 +117,16 @@ defmodule Shiina.CommandConfig do
     :ok = Config.set(guild_id, path, value)
     :ok = recache_config(guild_id)
     Cogs.say "Set value at path `#{path}` to `[]`."
+  end
+  Cogs.def set(at, "nil") do
+    {:ok, guild_id} = Cache.guild_id(message.channel_id)
+
+    path = with_prefix(message.author.id, at)
+
+    value = nil
+    :ok = Config.set(guild_id, path, value)
+    :ok = recache_config(guild_id)
+    Cogs.say "Set value at path `#{path}` to `:nil`."
   end
   Cogs.def set(at, type, value) do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
