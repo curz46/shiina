@@ -208,8 +208,11 @@ defmodule Shiina.Helpers do
 
   @spec is_category_role(Alchemy.Guild.snowflake(), Alchemy.Guild.snowflake()) :: boolean()
   def is_category_role(guild_id, role_id) do
-    role = Alchemy.Cache.role(guild_id, role_id)
-    String.starts_with?(role.name, @category_prefix)
+    with {:ok, role} <- Alchemy.Cache.role(guild_id, role_id) do
+      String.starts_with?(role.name, @category_prefix)
+    else
+      _ -> false
+    end
   end
 
   @spec find_category(Alchemy.Guild.t(), Alchemy.Guild.Role.t()) :: Alchemy.Guild.Role.t() | :undefined
