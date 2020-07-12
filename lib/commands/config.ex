@@ -44,6 +44,7 @@ defmodule Shiina.CommandConfig do
       `s+config put <path> integer|string|boolean|channel|role|user <value>` Add a value to the given path, assuming it is a list.\n
       `s+config insert <path> <index> integer|string|boolean|channel|role|user <value>` Insert a value to the given path at a particular index, assuming it is a list.\n
       `s+config pop <path> <index>` Remove the value from the given path at a particular index, assuming it is a list.\n
+      `s+config mv <from> <to>` Move the value from one path to the other.\n
       `s+config reset` Reset the configuration, restoring it to an empty document.\n
       `s+config recache` Recache the configuration (unnecessary).
       """
@@ -222,6 +223,19 @@ defmodule Shiina.CommandConfig do
     path = with_prefix(message.author.id, at)
     :ok = Config.set(guild_id, path, [])
     Cogs.say "Set value at path `#{path}` to `[]`."
+  end
+
+  Cogs.def mv(from, to) do
+    {:ok, guild_id} = Cache.guild_id(message.channel_id)
+
+    with value <- Config.get(guild_id, from),
+         :ok   <- Config.unset(guild_id, from),
+         :ok   <- Config.set(guild_id, to, value)
+    do
+      Cogs.say "Moved value at path `#{from}` to `#{to}`."
+    else
+      _err -> Cogs.say "Error: Failed to move path."
+    end
   end
 
   Cogs.def reset do
