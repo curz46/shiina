@@ -233,7 +233,8 @@ defmodule Shiina.CommandConfig do
 
     with value <- Config.get(guild_id, from),
          :ok   <- Config.unset(guild_id, from),
-         :ok   <- Config.set(guild_id, to, value)
+         :ok   <- Config.set(guild_id, to, value),
+         :ok   <- recache_config(guild_id)
     do
       Cogs.say "Moved value at path `#{from}` to `#{to}`."
     else
