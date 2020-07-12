@@ -156,19 +156,21 @@ defmodule Shiina.CommandConfig do
   Cogs.set_parser(:put, &Helpers.parse_quoted/1)
   Cogs.def put(at, type, value) do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
-    {:ok, value} = parse_value(guild_id, type, value)
+    with {:ok, value} <- parse_value(guild_id, type, value) do
+      path = with_prefix(message.author.id, at)
 
-    path = with_prefix(message.author.id, at)
-
-    list = Config.get(guild_id, path)
-    case list do
-      x when is_list(x) ->
-        list = [value | list]
-        Config.set(guild_id, path, list)
-        Cogs.say "Added value `#{value}` to list at path `#{path}`."
-        :ok = recache_config(guild_id)
-      _ ->
-        Cogs.say "Error: Value at path `#{path}` is not a list."
+      list = Config.get(guild_id, path)
+      case list do
+        x when is_list(x) ->
+          list = [value | list]
+          Config.set(guild_id, path, list)
+          Cogs.say "Added value `#{value}` to list at path `#{path}`."
+          :ok = recache_config(guild_id)
+        _ ->
+          Cogs.say "Error: Value at path `#{path}` is not a list."
+      end
+    else
+      {:error, reason} -> Cogs.say "Error: " <> reason
     end
   end
 
