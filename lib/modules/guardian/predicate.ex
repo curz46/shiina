@@ -5,6 +5,7 @@ defmodule Shiina.Guardian.Predicate do
   alias Alchemy.Permissions
 
   alias Alchemy.User
+  alias Alchemy.Guild
   alias Alchemy.Guild.GuildMember
 
   alias Shiina.Helpers
@@ -118,32 +119,13 @@ defmodule Shiina.Guardian.Predicate do
   ### :role_whitelist ###
   # Make sure that only the given members have the given roles
 
-  # With a role list
-
   @spec test_member_has_roles(
           Client.snowflake(),
           %{roles: [Client.snowflake()], members: [Client.snowflake()]},
           entity
         ) :: boolean
-  def test_member_has_roles(_guild_id, _rule = %{roles: roles, members: members}, member = %Alchemy.Guild.GuildMember{}) when is_list(roles) do
-    whitelisted   = is_targeted(members, member.user.id)
-    has_any_roles = Enum.any?(roles, &Enum.member?(member.roles, &1))
-
-    whitelisted or not has_any_roles
-  end
-
-  # With a category role
-
-  @spec test_member_has_roles(
-          Client.snowflake(),
-          %{roles: Client.snowflake(), members: [Client.snowflake()]},
-          entity
-        ) :: boolean
-  def test_member_has_roles(guild_id, _rule = %{roles: category_id, members: members}, member = %Alchemy.Guild.GuildMember{}) when is_bitstring(category_id) do
-    roles =
-      category_roles(guild_id, category_id)
-      |> Enum.map(fn role -> role.id end)
-
+  def test_member_has_roles(guild_id, _rule = %{roles: roles, members: members}, member = %Alchemy.Guild.GuildMember{}) do
+    roles = expand_category_roles(guild_id, roles)
     whitelisted   = is_targeted(members, member.user.id)
     has_any_roles = Enum.any?(roles, &Enum.member?(member.roles, &1))
 
@@ -152,24 +134,8 @@ defmodule Shiina.Guardian.Predicate do
 
   @spec resolve_member_has_roles(Client.snowflake(), %{roles: [Client.snowflake()]}, entity) ::
           :error | :ok
-  def resolve_member_has_roles(guild_id, _rule = %{roles: roles}, member) when is_list(roles) do
-    # member = Helpers.get_member!(guild_id, member_id)
-    # Keep a role only if it is not in the role whitelist
-    new_roles = Enum.filter(member.roles, fn role -> not Enum.member?(roles, role) end)
-    case Client.edit_member(guild_id, member.user.id, roles: new_roles) do
-      {:ok, _}    -> :ok
-      {:error, _} -> :error
-    end
-  end
-
-  @spec resolve_member_has_roles(Client.snowflake(), %{roles: Client.snowflake()}, entity) ::
-          :error | :ok
-  def resolve_member_has_roles(guild_id, _rule = %{roles: category_id}, member) when is_bitstring(category_id) do
-    roles =
-      category_roles(guild_id, category_id)
-      |> Enum.map(fn role -> role.id end)
-
-    # member = Helpers.get_member!(guild_id, member_id)
+  def resolve_member_has_roles(guild_id, _rule = %{roles: roles}, member) do
+    roles = expand_category_roles(guild_id, roles)
     # Keep a role only if it is not in the role whitelist
     new_roles = Enum.filter(member.roles, fn role -> not Enum.member?(roles, role) end)
     case Client.edit_member(guild_id, member.user.id, roles: new_roles) do
@@ -181,21 +147,13 @@ defmodule Shiina.Guardian.Predicate do
   ### :role_no_mentionable ###
   # Make sure that the given roles are not mentionable
 
-  def test_role_is_mentionable(_guild_id, _rule = %{roles: roles}, role = %Alchemy.Guild.Role{}) when is_list(roles) do
+  def test_role_is_mentionable(guild_id, _rule = %{roles: roles}, role = %Alchemy.Guild.Role{}) do
+    roles = expand_category_roles(guild_id, roles)
     if Enum.member?(roles, "!") do
       Enum.member?(roles, role.id) or not role.mentionable
     else
       not (Enum.member?(roles, role.id) or Enum.member?(roles, "*")) or not role.mentionable
     end
-  end
-
-  def test_role_is_mentionable(guild_id, _rule = %{roles: category_id}, role = %Alchemy.Guild.Role{}) when is_bitstring(category_id) do
-    roles =
-      category_roles(guild_id, category_id)
-      |> Enum.map(fn role -> role.id end)
-
-    targeted = is_targeted(roles, role.id)
-    not targeted or not role.mentionable
   end
 
   @spec resolve_role_is_mentionable(Client.snowflake(), map, struct) :: :error | :ok
@@ -210,27 +168,8 @@ defmodule Shiina.Guardian.Predicate do
   ### :role_permission_blacklist ###
   # Make sure that no roles have these permissions
 
-  def test_role_has_permissions(_guild_id, _rule = %{roles: roles, blacklist: blacklist}, %Alchemy.Guild.Role{id: role_id, permissions: bitset}) when is_list(roles) do
-    permissions = Alchemy.Permissions.to_list(bitset)
-
-    targeted = is_targeted(roles, role_id)
-    no_blacklisted =
-      cond do
-        Enum.member?(blacklist, "*") ->
-          Enum.empty?(permissions)
-        true ->
-          blacklist = Enum.map(blacklist, &String.to_atom/1)
-          Enum.all?(permissions, fn perm -> not Enum.member?(blacklist, perm) end)
-      end
-
-    not targeted or no_blacklisted
-  end
-
-  def test_role_has_permissions(guild_id, _rule = %{roles: category_id, blacklist: blacklist}, %Alchemy.Guild.Role{id: role_id, permissions: bitset}) when is_bitstring(category_id) do
-    roles =
-      category_roles(guild_id, category_id)
-      |> Enum.map(fn role -> role.id end)
-
+  def test_role_has_permissions(guild_id, _rule = %{roles: roles, blacklist: blacklist}, %Alchemy.Guild.Role{id: role_id, permissions: bitset}) do
+    roles = expand_category_roles(guild_id, roles)
     permissions = Alchemy.Permissions.to_list(bitset)
 
     targeted = is_targeted(roles, role_id)
@@ -389,7 +328,18 @@ defmodule Shiina.Guardian.Predicate do
     _permissions = Enum.reduce(deny, permissions, fn (perm, acc) -> Map.put(acc, perm, false) end)
   end
 
-  @spec category_roles(binary, binary) :: [any]
+  @spec expand_category_roles(Guild.snowflake(), [Guild.snowflake()]) :: [Guild.snowflake()]
+  def expand_category_roles(guild_id, roles) do
+    {category_roles, roles} =
+      roles
+      |> Enum.split_with(fn r -> Helpers.is_category_role(guild_id, r) end)
+    category_roles
+    |> Enum.flat_map(fn c -> category_roles(guild_id, c) end)
+    |> Enum.map(fn role -> role.id end)
+    |> Enum.concat(roles)
+  end
+
+  @spec category_roles(Guild.snowflake(), Guild.snowflake()) :: [Guild.Role.t]
   def category_roles(guild_id, category_id) do
     {:ok, guild}    = Cache.guild(guild_id)
     {:ok, category} = Cache.role(guild_id, category_id)
