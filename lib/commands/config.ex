@@ -214,6 +214,14 @@ defmodule Shiina.CommandConfig do
     end
   end
 
+  Cogs.def clear(at) do
+    {:ok, guild_id} = Cache.guild_id(message.channel_id)
+
+    path = with_prefix(message.author.id, at)
+    :ok = Config.set(guild_id, path, [])
+    Cogs.say "Set value at path `#{path}` to `[]`."
+  end
+
   Cogs.def reset do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
     {:ok, document} = Config.reset(guild_id)
@@ -289,15 +297,16 @@ defmodule Shiina.CommandConfig do
         {:ok, id}
       "role" ->
         value = String.downcase(value)
-        roles =
-          with {:ok, guild} <- Cache.guild(guild_id) do
-            guild[:roles]
-          else
-            _ -> []
+        with {:ok, guild} <- Cache.guild(guild_id) do
+          found =
+            guild.roles
+            |> Enum.find(fn %{name: name} -> value == String.downcase(name) end)
+          case found do
+            nil  -> {:error, "Role with that name doesn't exist."}
+            role -> {:ok, role.id}
           end
-        case Enum.find(roles, &(String.downcase(&1.name) == value)) do
-          nil  -> {:error, "Role does not exist with that name."}
-          role -> {:ok, role.id}
+        else
+          _ -> {:error, "Guild does not exist in cache."}
         end
       "user" ->
         regex = ~r/<@!?(\d{18})>/
