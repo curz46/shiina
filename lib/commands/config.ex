@@ -228,6 +228,9 @@ defmodule Shiina.CommandConfig do
   Cogs.def mv(from, to) do
     {:ok, guild_id} = Cache.guild_id(message.channel_id)
 
+    from = with_prefix(message.author.id, from)
+    to   = with_prefix(message.author.id, to)
+
     with value <- Config.get(guild_id, from),
          :ok   <- Config.unset(guild_id, from),
          :ok   <- Config.set(guild_id, to, value)
